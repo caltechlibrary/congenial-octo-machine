@@ -1,0 +1,51 @@
+name: Slack Message
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+jobs:
+  list_parse_post:
+    runs-on: ubuntu-latest
+    steps:
+      - id: list
+        run: |
+          echo "GH_REPO_LIST=$(gh repo list --json nameWithOwner,isPrivate,createdAt,url)" >> $GITHUB_ENV
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - id: parse
+        shell: python
+        run: |
+          import datetime
+          import json
+          import os
+          repositories = json.loads(os.environ["GH_REPO_LIST"])
+          msg = []
+          for repository in repositories:
+              # check if repository was created in the last 25 hours
+              if datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.strptime(
+                  repository["createdAt"].replace("Z", "+0000"), "%Y-%m-%dT%H:%M:%S%z"
+              ) < datetime.timedelta(hours=25):
+                  visibility = "private" if repository["isPrivate"] else "public"
+                  msg.append(
+                      "{} repository <{}|{}> added on {}; subscribe with `/github subscribe {}`\n".format(
+                          visibility,
+                          repository["url"],
+                          repository["nameWithOwner"],
+                          datetime.datetime.strptime(
+                              repository["createdAt"].replace("Z", "+0000"), "%Y-%m-%dT%H:%M:%S%z"
+                          ).strftime("%A, %B %-d, %Y at %I:%M:%S %Z"),
+                          repository["nameWithOwner"],
+                      )
+                  )
+          if msg:
+              with open(os.environ["GITHUB_ENV"], "a") as f:
+                  print(f'MSG={"".join(msg)}', file=f)
+      - id: post
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          channel-id: ${{ vars.CHANNEL_ID }}
+          slack-message: ${{ env.MSG }}
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
