@@ -43,6 +43,7 @@ jobs:
               with open(os.environ["GITHUB_ENV"], "a") as f:
                   print(f'MSG={"".join(msg)}', file=f)
       - id: post
+        if: ${{ env.MSG }}
         uses: slackapi/slack-github-action@v1.26.0
         with:
           channel-id: ${{ vars.CHANNEL_ID }}
